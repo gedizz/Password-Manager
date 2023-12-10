@@ -7,16 +7,13 @@ import bcrypt
 from audit_logger import AuditLogger
 import atexit
 
-
-# Logging stuff
+# Logging
 logger = AuditLogger()
-
 
 def log_event(event_type, username, details=""):
     logger.log(event_type, username, details)
 
-
-# Using keyring, we can access windows' default key service
+# Key management
 def load_or_create_key():
     key = keyring.get_password('password_manager', 'encryption_key')
     if key is None:
@@ -24,7 +21,7 @@ def load_or_create_key():
         keyring.set_password('password_manager', 'encryption_key', key)
     return key.encode()
 
-
+# User registration
 def register_user():
     new_username = simpledialog.askstring("Register", "Choose a username:")
     if new_username:
@@ -42,69 +39,45 @@ def register_user():
                 if password_strength == "Strong":
                     if create_user(new_username, new_password):
                         messagebox.showinfo("Registration", "Registration successful. Please log in.")
-                        # Log the registration event
-                        logger.log("Registration", new_username)
+                        log_event("Registration", new_username)
                         break
                     else:
                         messagebox.showwarning("Registration Failed", "Username already exists. Please choose a different username.")
-                        # Log the registration failure event
-                        logger.log("Registration Failed", new_username)
+                        log_event("Registration Failed", new_username)
                         return  # Exit registration process
                 else:
                     messagebox.showwarning("Weak Password", "Your password is not strong enough. Please try again.")
             else:
                 break
 
-
-
-
-# Load or create the key and instantiate a Fernet object
+# Key and cipher initialization
 key = load_or_create_key()
 cipher_suite = Fernet(key)
-
-
 current_user = None
 
 # Encryption/Decryption functions
 def encrypt_password(password):
     return cipher_suite.encrypt(password.encode()).decode()
 
-
 def decrypt_password(encrypted_password):
     return cipher_suite.decrypt(encrypted_password.encode()).decode()
 
-
-# Initialize database connection
+# Database initialization
 conn = sqlite3.connect('passwords.db')
 c = conn.cursor()
 
-# Create 'users' table if it doesn't exist
+# Create tables if they don't exist
 c.execute('''CREATE TABLE IF NOT EXISTS users
              (username TEXT PRIMARY KEY, password_hash TEXT)''')
 
-# Create 'passwords' table if it doesn't exist
 c.execute('''CREATE TABLE IF NOT EXISTS passwords
-             (id INTEGER PRIMARY KEY, username TEXT, service TEXT, encrypted_password TEXT)''')
-
-# Add 'username' column to 'passwords' table if it doesn't exist
-c.execute('''SELECT count(*) FROM pragma_table_info('passwords') WHERE name='username' ''')
-if c.fetchone()[0] == 0:
-    c.execute('''ALTER TABLE passwords ADD COLUMN username TEXT''')
-
-# Add 'strength' column to 'passwords' table if it doesn't exist
-c.execute('''SELECT count(*) FROM pragma_table_info('passwords') WHERE name='strength' ''')
-if c.fetchone()[0] == 0:
-    c.execute('''ALTER TABLE passwords ADD COLUMN strength TEXT''')
-
-conn.commit()
-
-
+             (id INTEGER PRIMARY KEY, username TEXT, service TEXT, encrypted_password TEXT, strength TEXT)''')
 
 # Utils
 def create_user(username, password):
     c.execute("SELECT * FROM users WHERE username=?", (username,))
     if c.fetchone():
-        log_event("User Already exists", username)
+        log_event("User Already Exists", username)
         return False  # User already exists
 
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
@@ -112,8 +85,6 @@ def create_user(username, password):
     conn.commit()
     log_event("User Created", username)
     return True
-
-
 
 def verify_user(username, password):
     c.execute("SELECT password_hash FROM users WHERE username=?", (username,))
@@ -123,7 +94,6 @@ def verify_user(username, password):
         return True
     log_event("User Verification Failed", username)
     return False
-
 
 def assess_password_strength(password):
     length = len(password)
@@ -139,8 +109,6 @@ def assess_password_strength(password):
     else:
         return "Weak"
 
-
-
 # Database interaction functions
 def add_password(username, service, password):
     encrypted_password = encrypt_password(password)
@@ -149,8 +117,7 @@ def add_password(username, service, password):
               (username, service, encrypted_password, password_strength))
     conn.commit()
     update_service_list(username)
-    log_event("Added password to DB", username)
-
+    log_event("Added Password to DB", username)
 
 def get_password(username, service):
     c.execute("SELECT encrypted_password FROM passwords WHERE username=? AND service=?",
@@ -174,9 +141,6 @@ def update_service_list(username):
         service_list.insert('', 'end', values=(service, strength), tags=(tag_name,))
         service_list.tag_configure(tag_name, background=color)
 
-
-
-
 # UI functions
 def save_password():
     service = custom_askstring("Service", "Enter the name of the service:")
@@ -186,13 +150,11 @@ def save_password():
             add_password(current_user, service, password)
             log_event("Save Password", current_user)
 
-
 def show_password():
     selected_item = service_list.selection()
     if selected_item:
-        # Get the first selected item (assuming single selection)
         item = service_list.item(selected_item[0])
-        selected_service = item['values'][0]  # Assuming service is the first value
+        selected_service = item['values'][0]
         c.execute("SELECT encrypted_password FROM passwords WHERE username=? AND service=?",
                   (current_user, selected_service))
         result = c.fetchone()
@@ -200,18 +162,16 @@ def show_password():
         if result:
             decrypted_password = decrypt_password(result[0])
             messagebox.showinfo("Password Info", f"Password for {selected_service}: {decrypted_password}")
-            log_event("Password found", selected_service)
+            log_event("Password Found", selected_service)
         else:
             messagebox.showinfo("Password Info", "Password not found")
-
 
 def remove_password():
     selected_items = service_list.selection()
     if selected_items:
-        selected_service = service_list.item(selected_items[0])['values'][0]  # Assuming service is the first value
+        selected_service = service_list.item(selected_items[0])['values'][0]
         delete_password(current_user, selected_service)
         log_event("Deleted Password", selected_service)
-
 
 def custom_askstring(title, prompt, show=None):
     def on_ok():
@@ -237,7 +197,6 @@ def custom_askstring(title, prompt, show=None):
 
     return user_input
 
-
 # Login/logout Functionality
 def login():
     global current_user
@@ -251,8 +210,7 @@ def login():
         log_event("Login", current_user)
     else:
         messagebox.showerror("Login Failed", "Incorrect username or password")
-        log_event("Login failed", username)
-
+        log_event("Login Failed", username)
 
 def logout():
     global current_user
@@ -262,7 +220,6 @@ def logout():
     password_entry.delete(0, tk.END)
     log_event("Logout", current_user)
     current_user = None
-
 
 # Creating main window
 root = tk.Tk()
@@ -274,12 +231,9 @@ style.configure('TButton', font=('Arial', 10))
 style.configure('TLabel', font=('Arial', 10))
 style.configure('TListbox', font=('Arial', 10))
 
-
-
 # Login Frame (Using grid)
 login_frame = ttk.Frame(root, padding="10")
 login_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
 
 # Add a registration button to the login frame
 register_button = ttk.Button(login_frame, text="Register", command=register_user)
@@ -319,10 +273,6 @@ service_list.column('strength', width=100)
 # Position the Treeview
 service_list.grid(row=1, columnspan=3, pady=5, sticky='nsew')
 
-# To allow the columns to be resized
-
-
-
 # Resizable configuration
 root.grid_columnconfigure(0, weight=1)
 root.grid_rowconfigure(0, weight=1)
@@ -332,9 +282,7 @@ main_frame.grid_rowconfigure(1, weight=1)
 # Initially hide main frame
 main_frame.grid_remove()
 
-
 atexit.register(lambda: logger.close())
-
 
 # Start the GUI
 root.mainloop()
