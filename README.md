@@ -15,7 +15,7 @@ Welcome to the Password Manager Application! This program allows you to securely
 
 To get started with the Password Manager Application, follow these steps:
 
-1. Build the application using 'pyinstaller --onefile --icon=logo.ico --name=PasswordManager password_manager.py' in your terminal
+1. Build the application using `pyinstaller --onefile --icon=logo.ico --name=PasswordManager password_manager.py` in your terminal
 2. Execute the PasswordManager.exe located in /dist
 
 ## Features
