@@ -3,6 +3,8 @@ from tkinter import simpledialog, messagebox, ttk
 from cryptography.fernet import Fernet
 import sqlite3
 import keyring
+import bcrypt
+
 
 # Using keyring, we can access windows' default key service
 def load_or_create_key():
@@ -12,17 +14,19 @@ def load_or_create_key():
         keyring.set_password('password_manager', 'encryption_key', key)
     return key.encode()
 
+
+def register_user():
+    new_username = simpledialog.askstring("Register", "Choose a username:")
+    if new_username:
+        new_password = simpledialog.askstring("Register", "Choose a password:", show="*")
+        if new_password:
+            create_user(new_username, new_password)
+            messagebox.showinfo("Registration", "Registration successful. Please log in.")
+
+
 # Load or create the key and instantiate a Fernet object
 key = load_or_create_key()
 cipher_suite = Fernet(key)
-
-# Initialize database connection - typically this would be something secured over the web
-# currently we can access it locally which is not good
-conn = sqlite3.connect('passwords.db')
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS passwords
-             (id INTEGER PRIMARY KEY, service TEXT, encrypted_password TEXT)''')
-conn.commit()
 
 
 # Encryption/Decryption functions
@@ -32,6 +36,30 @@ def encrypt_password(password):
 
 def decrypt_password(encrypted_password):
     return cipher_suite.decrypt(encrypted_password.encode()).decode()
+
+
+# Initialize database connection
+conn = sqlite3.connect('passwords.db')
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS passwords
+             (id INTEGER PRIMARY KEY, service TEXT, encrypted_password TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS users
+             (username TEXT PRIMARY KEY, password_hash TEXT)''')
+conn.commit()
+
+
+def create_user(username, password):
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    c.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, hashed))
+    conn.commit()
+
+
+def verify_user(username, password):
+    c.execute("SELECT password_hash FROM users WHERE username=?", (username,))
+    user = c.fetchone()
+    if user and bcrypt.checkpw(password.encode(), user[0]):
+        return True
+    return False
 
 
 # Database interaction functions
@@ -87,6 +115,19 @@ def remove_password():
     if selected_service:
         delete_password(selected_service)
 
+
+
+# Login Functionality
+def login():
+    username = username_entry.get()
+    password = password_entry.get()
+    if verify_user(username, password):
+        login_frame.grid_remove()
+        main_frame.grid()
+    else:
+        messagebox.showerror("Login Failed", "Incorrect username or password")
+
+
 # Creating main window
 root = tk.Tk()
 root.title("Password Manager")
@@ -97,11 +138,31 @@ style.configure('TButton', font=('Arial', 10))
 style.configure('TLabel', font=('Arial', 10))
 style.configure('TListbox', font=('Arial', 10))
 
-# Main frame
+
+
+# Login Frame (Using grid)
+login_frame = ttk.Frame(root, padding="10")
+login_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+# Add a registration button to the login frame
+register_button = ttk.Button(login_frame, text="Register", command=register_user)
+register_button.grid(row=3, columnspan=2)
+
+ttk.Label(login_frame, text="Username:").grid(row=0, column=0)
+username_entry = ttk.Entry(login_frame)
+username_entry.grid(row=0, column=1)
+
+ttk.Label(login_frame, text="Password:").grid(row=1, column=0)
+password_entry = ttk.Entry(login_frame, show="*")
+password_entry.grid(row=1, column=1)
+
+ttk.Button(login_frame, text="Login", command=login).grid(row=2, columnspan=2)
+
+# Main frame (Using grid)
 main_frame = ttk.Frame(root, padding="10")
 main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-# Layout inside main frame
+# Layout inside main frame (Using grid)
 ttk.Button(main_frame, text="Add Password", command=save_password).grid(row=0, column=0, padx=5, pady=5)
 ttk.Button(main_frame, text="Show Password", command=show_password).grid(row=0, column=1, padx=5, pady=5)
 ttk.Button(main_frame, text="Delete Password", command=remove_password).grid(row=0, column=2, padx=5, pady=5)
@@ -115,6 +176,12 @@ root.grid_columnconfigure(0, weight=1)
 root.grid_rowconfigure(0, weight=1)
 main_frame.grid_columnconfigure(0, weight=1)
 main_frame.grid_rowconfigure(1, weight=1)
+
+# Initially hide main frame
+main_frame.grid_remove()
+
+# ... [rest of the code]
+
 
 # Start the GUI
 root.mainloop()
