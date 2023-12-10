@@ -118,14 +118,24 @@ def assess_password_strength(password):
         return "Weak"
 
 # Database interaction functions
+# Database interaction functions
 def add_password(username, service, password):
-    encrypted_password = encrypt_password(password)
-    password_strength = assess_password_strength(password)
-    c.execute("INSERT INTO passwords (username, service, encrypted_password, strength) VALUES (?, ?, ?, ?)",
-              (username, service, encrypted_password, password_strength))
-    conn.commit()
-    update_service_list(username)
-    log_event("Added Password to DB", username)
+    # Check if a password with the same service name already exists for the current user
+    c.execute("SELECT service FROM passwords WHERE username=? AND service=?", (username, service))
+    existing_service = c.fetchone()
+
+    if existing_service:
+        messagebox.showwarning("Duplicate Service", f"A password for '{service}' already exists.")
+        log_event("Duplicate Service Entry", username)
+    else:
+        encrypted_password = encrypt_password(password)
+        password_strength = assess_password_strength(password)
+        c.execute("INSERT INTO passwords (username, service, encrypted_password, strength) VALUES (?, ?, ?, ?)",
+                  (username, service, encrypted_password, password_strength))
+        conn.commit()
+        update_service_list(username)
+        log_event("Added Password to DB", username)
+
 
 def get_password(username, service):
     c.execute("SELECT encrypted_password FROM passwords WHERE username=? AND service=?",
