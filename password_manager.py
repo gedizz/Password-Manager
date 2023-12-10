@@ -4,6 +4,16 @@ from cryptography.fernet import Fernet
 import sqlite3
 import keyring
 import bcrypt
+from audit_logger import AuditLogger
+import atexit
+
+
+# Logging stuff
+logger = AuditLogger()
+
+
+def log_event(event_type, username, details=""):
+    logger.log(event_type, username, details)
 
 
 # Using keyring, we can access windows' default key service
@@ -32,9 +42,13 @@ def register_user():
                 if password_strength == "Strong":
                     if create_user(new_username, new_password):
                         messagebox.showinfo("Registration", "Registration successful. Please log in.")
+                        # Log the registration event
+                        logger.log("Registration", new_username)
                         break
                     else:
                         messagebox.showwarning("Registration Failed", "Username already exists. Please choose a different username.")
+                        # Log the registration failure event
+                        logger.log("Registration Failed", new_username)
                         return  # Exit registration process
                 else:
                     messagebox.showwarning("Weak Password", "Your password is not strong enough. Please try again.")
@@ -90,11 +104,13 @@ conn.commit()
 def create_user(username, password):
     c.execute("SELECT * FROM users WHERE username=?", (username,))
     if c.fetchone():
+        log_event("User Already exists", username)
         return False  # User already exists
 
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
     c.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, hashed))
     conn.commit()
+    log_event("User Created", username)
     return True
 
 
@@ -103,7 +119,9 @@ def verify_user(username, password):
     c.execute("SELECT password_hash FROM users WHERE username=?", (username,))
     user = c.fetchone()
     if user and bcrypt.checkpw(password.encode(), user[0]):
+        log_event("User Verified", username)
         return True
+    log_event("User Verification Failed", username)
     return False
 
 
@@ -131,6 +149,7 @@ def add_password(username, service, password):
               (username, service, encrypted_password, password_strength))
     conn.commit()
     update_service_list(username)
+    log_event("Added password to DB", username)
 
 
 def get_password(username, service):
@@ -165,6 +184,7 @@ def save_password():
         password = custom_askstring("Password", "Enter the password:", show="*")
         if password:
             add_password(current_user, service, password)
+            log_event("Save Password", current_user)
 
 
 def show_password():
@@ -176,12 +196,13 @@ def show_password():
         c.execute("SELECT encrypted_password FROM passwords WHERE username=? AND service=?",
                   (current_user, selected_service))
         result = c.fetchone()
+        log_event("Show Password", current_user)
         if result:
             decrypted_password = decrypt_password(result[0])
             messagebox.showinfo("Password Info", f"Password for {selected_service}: {decrypted_password}")
+            log_event("Password found", selected_service)
         else:
             messagebox.showinfo("Password Info", "Password not found")
-
 
 
 def remove_password():
@@ -189,6 +210,7 @@ def remove_password():
     if selected_items:
         selected_service = service_list.item(selected_items[0])['values'][0]  # Assuming service is the first value
         delete_password(current_user, selected_service)
+        log_event("Deleted Password", selected_service)
 
 
 def custom_askstring(title, prompt, show=None):
@@ -226,17 +248,20 @@ def login():
         login_frame.grid_remove()
         main_frame.grid()
         update_service_list(current_user)  # Update the list with user-specific passwords
+        log_event("Login", current_user)
     else:
         messagebox.showerror("Login Failed", "Incorrect username or password")
+        log_event("Login failed", username)
 
 
 def logout():
     global current_user
-    current_user = None
     main_frame.grid_remove()
     login_frame.grid()
     username_entry.delete(0, tk.END)
     password_entry.delete(0, tk.END)
+    log_event("Logout", current_user)
+    current_user = None
 
 
 # Creating main window
@@ -307,7 +332,8 @@ main_frame.grid_rowconfigure(1, weight=1)
 # Initially hide main frame
 main_frame.grid_remove()
 
-# ... [rest of the code]
+
+atexit.register(lambda: logger.close())
 
 
 # Start the GUI
