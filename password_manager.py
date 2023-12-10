@@ -144,6 +144,15 @@ def login():
         messagebox.showerror("Login Failed", "Incorrect username or password")
 
 
+def logout():
+    global current_user
+    current_user = None
+    main_frame.grid_remove()
+    login_frame.grid()
+    username_entry.delete(0, tk.END)
+    password_entry.delete(0, tk.END)
+
+
 # Creating main window
 root = tk.Tk()
 root.title("Password Manager")
@@ -159,6 +168,7 @@ style.configure('TListbox', font=('Arial', 10))
 # Login Frame (Using grid)
 login_frame = ttk.Frame(root, padding="10")
 login_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
 
 # Add a registration button to the login frame
 register_button = ttk.Button(login_frame, text="Register", command=register_user)
@@ -177,6 +187,10 @@ ttk.Button(login_frame, text="Login", command=login).grid(row=2, columnspan=2)
 # Main frame (Using grid)
 main_frame = ttk.Frame(root, padding="10")
 main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+# Add Logout Button to main_frame
+logout_button = ttk.Button(main_frame, text="Logout", command=logout)
+logout_button.grid(row=2, column=1, padx=5, pady=5)
 
 # Layout inside main frame (Using grid)
 ttk.Button(main_frame, text="Add Password", command=save_password).grid(row=0, column=0, padx=5, pady=5)
