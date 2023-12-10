@@ -18,10 +18,30 @@ def load_or_create_key():
 def register_user():
     new_username = simpledialog.askstring("Register", "Choose a username:")
     if new_username:
-        new_password = simpledialog.askstring("Register", "Choose a password:", show="*")
-        if new_password:
-            create_user(new_username, new_password)
-            messagebox.showinfo("Registration", "Registration successful. Please log in.")
+        while True:
+            new_password = simpledialog.askstring("Register",
+                "Choose a password:\n\n" +
+                "A strong password must have:\n" +
+                "- At least 8 characters\n" +
+                "- Include numbers and letters\n" +
+                "- Mix of uppercase and lowercase letters\n" +
+                "- Special characters (e.g., !@#$%^&*)\n",
+                show="*")
+            if new_password:
+                password_strength = assess_password_strength(new_password)
+                if password_strength == "Strong":
+                    if create_user(new_username, new_password):
+                        messagebox.showinfo("Registration", "Registration successful. Please log in.")
+                        break
+                    else:
+                        messagebox.showwarning("Registration Failed", "Username already exists. Please choose a different username.")
+                        return  # Exit registration process
+                else:
+                    messagebox.showwarning("Weak Password", "Your password is not strong enough. Please try again.")
+            else:
+                break
+
+
 
 
 # Load or create the key and instantiate a Fernet object
@@ -68,9 +88,15 @@ conn.commit()
 
 # Utils
 def create_user(username, password):
+    c.execute("SELECT * FROM users WHERE username=?", (username,))
+    if c.fetchone():
+        return False  # User already exists
+
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
     c.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, hashed))
     conn.commit()
+    return True
+
 
 
 def verify_user(username, password):
