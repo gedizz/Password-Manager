@@ -29,6 +29,8 @@ key = load_or_create_key()
 cipher_suite = Fernet(key)
 
 
+current_user = None
+
 # Encryption/Decryption functions
 def encrypt_password(password):
     return cipher_suite.encrypt(password.encode()).decode()
@@ -39,13 +41,27 @@ def decrypt_password(encrypted_password):
 
 
 # Initialize database connection
+# ...
+
+# Initialize database connection
 conn = sqlite3.connect('passwords.db')
 c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS passwords
-             (id INTEGER PRIMARY KEY, service TEXT, encrypted_password TEXT)''')
+
+# Create tables if they don't exist
 c.execute('''CREATE TABLE IF NOT EXISTS users
              (username TEXT PRIMARY KEY, password_hash TEXT)''')
+
+# Check if 'username' column exists in 'passwords' table and add it if it doesn't
+c.execute('''SELECT count(*) FROM pragma_table_info('passwords') WHERE name='username' ''')
+if c.fetchone()[0] == 0:
+    c.execute('''ALTER TABLE passwords ADD COLUMN username TEXT''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS passwords
+             (id INTEGER PRIMARY KEY, username TEXT, service TEXT, encrypted_password TEXT)''')
+
 conn.commit()
+
+
 
 
 def create_user(username, password):
@@ -63,30 +79,29 @@ def verify_user(username, password):
 
 
 # Database interaction functions
-def add_password(service, password):
+def add_password(username, service, password):
     encrypted_password = encrypt_password(password)
-    c.execute("INSERT INTO passwords (service, encrypted_password) VALUES (?, ?)", (service, encrypted_password))
+    c.execute("INSERT INTO passwords (username, service, encrypted_password) VALUES (?, ?, ?)",
+              (username, service, encrypted_password))
     conn.commit()
-    update_service_list()
+    update_service_list(username)
 
-
-def get_password(service):
-    c.execute("SELECT encrypted_password FROM passwords WHERE service=?", (service,))
+def get_password(username, service):
+    c.execute("SELECT encrypted_password FROM passwords WHERE username=? AND service=?",
+              (username, service))
     result = c.fetchone()
     if result:
         return decrypt_password(result[0])
     return None
 
-
-def delete_password(service):
-    c.execute("DELETE FROM passwords WHERE service=?", (service,))
+def delete_password(username, service):
+    c.execute("DELETE FROM passwords WHERE username=? AND service=?", (username, service))
     conn.commit()
-    update_service_list()
+    update_service_list(username)
 
-
-def update_service_list():
+def update_service_list(username):
     service_list.delete(0, tk.END)
-    c.execute("SELECT service FROM passwords")
+    c.execute("SELECT service FROM passwords WHERE username=?", (username,))
     for service in c.fetchall():
         service_list.insert(tk.END, service[0])
 
@@ -97,33 +112,34 @@ def save_password():
     if service:
         password = simpledialog.askstring("Password", "Enter the password:", show="*")
         if password:
-            add_password(service, password)
-
+            add_password(current_user, service, password)
 
 def show_password():
     selected_service = service_list.get(tk.ANCHOR)
     if selected_service:
-        password = get_password(selected_service)
+        password = get_password(current_user, selected_service)
         if password:
             messagebox.showinfo("Password Info", f"Password for {selected_service}: {password}")
         else:
             messagebox.showinfo("Password Info", "Password not found")
 
-
 def remove_password():
     selected_service = service_list.get(tk.ANCHOR)
     if selected_service:
-        delete_password(selected_service)
+        delete_password(current_user, selected_service)
 
 
 
 # Login Functionality
 def login():
+    global current_user
     username = username_entry.get()
     password = password_entry.get()
     if verify_user(username, password):
+        current_user = username
         login_frame.grid_remove()
         main_frame.grid()
+        update_service_list(current_user)  # Update the list with user-specific passwords
     else:
         messagebox.showerror("Login Failed", "Incorrect username or password")
 
@@ -169,7 +185,7 @@ ttk.Button(main_frame, text="Delete Password", command=remove_password).grid(row
 
 service_list = tk.Listbox(main_frame, height=10, width=50)
 service_list.grid(row=1, columnspan=3, pady=5)
-update_service_list()
+
 
 # Resizable configuration
 root.grid_columnconfigure(0, weight=1)
