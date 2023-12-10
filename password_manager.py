@@ -118,7 +118,6 @@ def assess_password_strength(password):
         return "Weak"
 
 # Database interaction functions
-# Database interaction functions
 def add_password(username, service, password):
     # Check if a password with the same service name already exists for the current user
     c.execute("SELECT service FROM passwords WHERE username=? AND service=?", (username, service))
